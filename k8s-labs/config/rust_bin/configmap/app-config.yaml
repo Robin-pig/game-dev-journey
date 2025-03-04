@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  app-config.properties: |
+    db_url=jdbc:mysql://mysql-service:3306/dbname
+    redis_url=redis-service:6379

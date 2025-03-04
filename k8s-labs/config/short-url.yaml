@@ -1,0 +1,136 @@
+# 1. 部署Redis
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:alpine
+          ports:
+            - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+spec:
+  type: LoadBalancer  # 允许通过节点端口访问
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+---
+# 2. 部署RabbitMQ
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3-management-alpine
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service
+spec:
+  type: LoadBalancer  # 允许通过节点端口访问
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      protocol: TCP
+      port: 5672
+      targetPort: 5672
+    - name: management
+      protocol: TCP
+      port: 15672
+      targetPort: 15672
+---
+# 3. 部署ShortURL主应用
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shorturl
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: shorturl
+  template:
+    metadata:
+      labels:
+        app: shorturl
+    spec:
+      containers:
+        - name: shorturl
+          image: shorturl:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: REDIS_HOST
+              value: "redis-service"  # 对应Redis Service名称
+            - name: RABBITMQ_HOST
+              value: "rabbitmq-service"  # 对应RabbitMQ Service名称
+---
+# 4. 主应用Service（关键缺失部分）
+apiVersion: v1
+kind: Service
+metadata:
+  name: shorturl-service
+spec:
+  type: NodePort  # 允许通过节点端口访问
+  selector:
+    app: shorturl
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+---
+# 5. Ingress（可选，需启用minikube ingress）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shorturl-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: shorturl-service
+                port:
+                  number: 80
